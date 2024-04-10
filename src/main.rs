@@ -111,26 +111,7 @@ fn main() {
                     }
 
                     current_pwd.variables = Some(Vec::new());
-                    if let Some(variables) = config.as_table() {
-                        for (key, value) in variables {
-                            let key = key.to_uppercase();
-                            let value = value.as_str().unwrap();
-                            current_pwd.variables.as_mut().unwrap().push(key.clone());
-                            if let Ok(val) = env::var(&key) {
-                                if val == value {
-                                    continue
-                                } else {
-                                    export_changed = true;
-                                    cmd.push_str(format!("export {}={}\n", key, value).as_str());
-                                    export.push_str(format!(" \x1b[1m\x1b[38;5;208m~{}\x1b[0m", key).as_str());
-                                }
-                            } else {
-                                export_changed = true;
-                                cmd.push_str(format!("export {}={}\n", key, value).as_str());
-                                export.push_str(format!(" \x1b[1;32m+{}\x1b[0m", key).as_str());
-                            }
-                        }
-                    }
+                    parse_config(None, &mut config, current_pwd, &mut export_changed, &mut cmd, &mut export);
                 }
                 std::fs::write(&metadata_file, serde_json::to_string(&metadata).unwrap()).unwrap();
             }
@@ -160,5 +141,38 @@ fn main() {
             println!("unset RV_CHECK");
             println!("{}", cmd);
         }
+    }
+}
+
+fn parse_config(
+    key: Option<&String>,
+    outer: &mut Value,
+    current_pwd: &mut Activated,
+    export_changed: &mut bool,
+    cmd: &mut String,
+    export: &mut String,
+) {
+    match outer {
+        Value::Table(inner) => {
+            for (key, value) in inner {
+                parse_config(Some(key), value, current_pwd, export_changed, cmd, export);
+            }
+        },
+        outer => {
+            let value = outer.as_str().unwrap();
+            let key = key.unwrap();
+            current_pwd.variables.as_mut().unwrap().push(key.clone());
+            if let Ok(val) = env::var(key) {
+                if val != value {
+                    *export_changed = true;
+                    cmd.push_str(format!("export {}={}\n", key, value).as_str());
+                    export.push_str(format!(" \x1b[1m\x1b[38;5;208m~{}\x1b[0m", key).as_str());
+                }
+            } else {
+                *export_changed = true;
+                cmd.push_str(format!("export {}={}\n", key, value).as_str());
+                export.push_str(format!(" \x1b[1;32m+{}\x1b[0m", key).as_str());
+            }
+        },
     }
 }
