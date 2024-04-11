@@ -21,6 +21,7 @@ enum Commands {
     Show,
     List(List),
     Get(Get),
+    Clear,
 }
 
 #[derive(Args, Debug)]
@@ -276,6 +277,34 @@ fn main() {
                     println!("{}", result.get(&args.key).unwrap_or(&String::from("null")));
                 }
             }
+        },
+        Commands::Clear => {
+            let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
+            let metadata_str = std::fs::read_to_string(&metadata_file).unwrap();
+            let mut metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
+            let current_pwd = env::var("PWD").unwrap();
+            let current_rv = PathBuf::from(&current_pwd).join("rv.toml");
+            let mut cmd = String::new();
+
+            let mut unset = String::new();
+            let mut unset_changed = false;
+            if let Some(current_pwd) = metadata
+                .activated
+                .get(&current_rv) {
+
+                if let Some(current_vars) = current_pwd.variables.clone() {
+                    unset_changed = true;
+                    for var in current_vars {
+                        cmd.push_str(format!("unset {}\n", var).as_str());
+                        unset.push_str(format!(" \x1b[1;31m-{}\x1b[0m", var).as_str());
+                    }
+                }
+                metadata.activated.remove(&current_rv);
+            }
+            if unset_changed {
+                println!("\x1b[1;31mrv ↓\x1b[0m {} {}", current_pwd, unset);
+            }
+            std::fs::write(&metadata_file, serde_json::to_string(&metadata).unwrap()).unwrap();
         },
     }
 }
