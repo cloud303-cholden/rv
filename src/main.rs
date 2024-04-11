@@ -19,13 +19,25 @@ enum Commands {
     Precmd,
     Set(Set),
     Show,
-    List,
+    List(List),
     Get(Get),
 }
 
 #[derive(Args, Debug)]
 struct Set {
     profile: String,
+}
+
+#[derive(Args, Debug)]
+struct List {
+    #[arg(long, group = "output_format")]
+    json: bool,
+    #[arg(long, group = "output_format")]
+    toml: bool,
+    #[arg(long, group = "output_format")]
+    env: bool,
+    #[arg(long, group = "output_format")]
+    envrc: bool,
 }
 
 #[derive(Args, Debug)]
@@ -181,7 +193,7 @@ fn main() {
                 }
             }
         },
-        Commands::List => {
+        Commands::List(args) => {
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
             let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
             let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
@@ -209,7 +221,26 @@ fn main() {
 
                     parse_to_map(None, &mut config, &mut result);
 
-                    let list = serde_json::to_string_pretty(&result).unwrap();
+                    let list: String;
+                    if args.json {
+                        list = serde_json::to_string_pretty(&result).unwrap();
+                    } else if args.toml {
+                        list = toml::to_string(&result).unwrap();
+                    } else if args.env {
+                        list = result
+                            .iter()
+                            .map(|(k, v)| format!("{}={}", k, v))
+                            .collect::<Vec<String>>()
+                            .join("\n");
+                    } else if args.envrc {
+                        list = result
+                            .iter()
+                            .map(|(k, v)| format!("export {}={}", k, v))
+                            .collect::<Vec<String>>()
+                            .join("\n");
+                    } else {
+                        list = serde_json::to_string_pretty(&result).unwrap();
+                    }
                     println!("{}", list);
                 }
             }
