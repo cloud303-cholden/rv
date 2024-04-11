@@ -1,6 +1,7 @@
 use std::{collections::HashMap, env, path::PathBuf};
 
 use clap::{Args, Parser, Subcommand};
+use nu_ansi_term::{Color, Style};
 use serde::{Deserialize, Serialize};
 use toml::Value;
 
@@ -63,6 +64,176 @@ struct Activated {
     variables: Option<Vec<String>>,
 }
 
+#[derive(Debug, Deserialize)]
+struct Config {
+    #[serde(default = "default_activated")]
+    activated: Format,
+    #[serde(default = "default_activated_dir")]
+    activated_dir: Format,
+    #[serde(default = "default_deactivated")]
+    deactivated: Format,
+    #[serde(default = "default_deactivated_dir")]
+    deactivated_dir: Format,
+    #[serde(default = "default_added")]
+    added: Format,
+    #[serde(default = "default_removed")]
+    removed: Format,
+    #[serde(default = "default_changed")]
+    changed: Format,
+}
+
+impl Config {
+    fn load() -> Config {
+        let config_path = dirs::config_dir().unwrap().join("rv").join("config.toml");
+        match std::fs::read_to_string(config_path) {
+            Ok(config) => toml::from_str(config.as_str()).unwrap(),
+            Err(_) => Config::default(),
+        }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            activated: default_activated(),
+            activated_dir: default_activated_dir(),
+            deactivated: default_deactivated(),
+            deactivated_dir: default_deactivated_dir(),
+            added: default_added(),
+            removed: default_removed(),
+            changed: default_changed(),
+        }
+    }
+}
+
+fn default_activated() -> Format {
+    Format {
+        symbol: Some("rv ↑ ".to_string()),
+        style: Some(Style::new().bold().fg(Color::Green)),
+    }
+}
+
+fn default_activated_dir() -> Format {
+    Format {
+        symbol: Some("".to_string()),
+        style: Some(Style::new().fg(Color::White)),
+    }
+}
+
+fn default_deactivated() -> Format {
+    Format {
+        symbol: Some("rv ↓ ".to_string()),
+        style: Some(Style::new().bold().fg(Color::Red)),
+    }
+}
+
+fn default_deactivated_dir() -> Format {
+    Format {
+        symbol: Some("".to_string()),
+        style: Some(Style::new().fg(Color::White)),
+    }
+}
+
+fn default_added() -> Format {
+    Format {
+        symbol: Some("  ".to_string()),
+        style: Some(Style::new().bold().fg(Color::Green)),
+    }
+}
+
+fn default_removed() -> Format {
+    Format {
+        symbol: Some("  ".to_string()),
+        style: Some(Style::new().bold().fg(Color::Red)),
+    }
+}
+
+fn default_changed() -> Format {
+    Format {
+        symbol: Some("  ".to_string()),
+        style: Some(Style::new().bold().fg(Color::Fixed(208))),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct Format {
+    symbol: Option<String>,
+    #[serde(deserialize_with = "deserialize_style")]
+    style: Option<Style>,
+}
+
+impl Format {
+    fn paint(&self, s: &str) -> String {
+        match &self.style {
+            Some(style) => format!("{}{}", style.paint(self.symbol.as_deref().unwrap_or("")), style.paint(s)),
+            None => format!("{}{}", self.symbol.as_deref().unwrap_or(""), s),
+        }
+    }
+}
+
+fn deserialize_style<'de, D>(deserializer: D) -> Result<Option<Style>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: Option<String> = Option::deserialize(deserializer)?;
+    match s {
+        Some(s) => {
+            let mut style = Style::new();
+            let mut s = s.split_whitespace();
+            let color = match s.next() {
+                Some("black") => Color::Black,
+                Some("darkgray") => Color::DarkGray,
+                Some("red") => Color::Red,
+                Some("lightred") => Color::LightRed,
+                Some("green") => Color::Green,
+                Some("lightgreen") => Color::LightGreen,
+                Some("yellow") => Color::Yellow,
+                Some("lightyellow") => Color::LightYellow,
+                Some("blue") => Color::Blue,
+                Some("lightblue") => Color::LightBlue,
+                Some("purple") => Color::Purple,
+                Some("lightpurple") => Color::LightPurple,
+                Some("magenta") => Color::Magenta,
+                Some("lightmagenta") => Color::LightMagenta,
+                Some("cyan") => Color::Cyan,
+                Some("lightcyan") => Color::LightCyan,
+                Some("white") => Color::White,
+                Some("lightgray") => Color::LightGray,
+                Some("default") => Color::Default,
+                Some(bits) => {
+                    match bits.parse() {
+                        Ok(fixed) => Color::Fixed(fixed),
+                        Err(_) => {
+                            let mut rgb = bits.split(',');
+                            let r = rgb.next().unwrap().parse().unwrap();
+                            let g = rgb.next().unwrap().parse().unwrap();
+                            let b = rgb.next().unwrap().parse().unwrap();
+                            Color::Rgb(r, g, b)
+                        },
+                    }
+                }
+                _ => return Ok(None),
+            };
+            style = style.fg(color);
+            for elem in s {
+                style = match elem {
+                    "bold" => style.bold(),
+                    "dimmed" => style.dimmed(),
+                    "italic" => style.italic(),
+                    "underline" => style.underline(),
+                    "blink" => style.blink(),
+                    "reverse" => style.reverse(),
+                    "hidden" => style.hidden(),
+                    "strikethrough" => style.strikethrough(),
+                    _ => style,
+                }
+            }
+            Ok(Some(style))
+        },
+        None => Ok(None),
+    }
+}
+
 fn main() {
 
     let cli = Cli::parse();
@@ -90,6 +261,8 @@ fn main() {
             println!("export RV_CHECK=1");
         },
         Commands::Precmd => {
+            let rv_config = Config::load();
+
             let previous_pwd = env::var("OLDPWD").unwrap();
             let current_pwd = env::var("PWD").unwrap();
             let check = env::var("RV_CHECK").ok();
@@ -114,7 +287,7 @@ fn main() {
                         unset_changed = true;
                         for var in previous_vars {
                             cmd.push_str(format!("unset {}\n", var).as_str());
-                            unset.push_str(format!(" \x1b[1;31m-{}\x1b[0m", var).as_str());
+                            unset.push_str(&rv_config.removed.paint(&var));
                         }
                     }
                 }
@@ -141,12 +314,12 @@ fn main() {
                                 if val != *value {
                                     export_changed = true;
                                     cmd.push_str(format!("export {}={}\n", key, value).as_str());
-                                    export.push_str(format!(" \x1b[1m\x1b[38;5;208m~{}\x1b[0m", key).as_str());
+                                    export.push_str(&rv_config.changed.paint(key));
                                 }
                             } else {
                                 export_changed = true;
                                 cmd.push_str(format!("export {}={}\n", key, value).as_str());
-                                export.push_str(format!(" \x1b[1;32m+{}\x1b[0m", key).as_str());
+                                export.push_str(&rv_config.added.paint(key));
                             }
                         }
                     }
@@ -154,7 +327,7 @@ fn main() {
                         config = config.get(value).unwrap().clone();
                     }
 
-                    parse_config(None, &mut config, current_pwd, &mut export_changed, &mut cmd, &mut export);
+                    parse_config(None, &mut config, current_pwd, &mut export_changed, &mut cmd, &mut export, &rv_config);
                 }
                 std::fs::write(&metadata_file, serde_json::to_string(&metadata).unwrap()).unwrap();
             }
@@ -174,17 +347,31 @@ fn main() {
             }
 
             if unset_changed {
-                println!("echo '\x1b[1;31mrv ↓\x1b[0m {}{:>unset_len$}{}'", previous_pwd, "", unset);
+                println!(
+                    "echo '{}{}{:>unset_len$}{}'",
+                    rv_config.deactivated.paint(""),
+                    rv_config.deactivated_dir.paint(&previous_pwd),
+                    "",
+                    unset,
+                );
             }
 
             if export_changed {
-                println!("echo '\x1b[1;32mrv ↑\x1b[0m {}{:>export_len$}{}'", current_pwd, "", export);
+                println!(
+                    "echo '{}{}{:>export_len$}{}'",
+                    rv_config.activated.paint(""),
+                    rv_config.activated_dir.paint(&current_pwd),
+                    "",
+                    export,
+                );
             }
 
             println!("unset RV_CHECK");
             println!("{}", cmd);
         },
         Commands::Show => {
+            let rv_config = Config::load();
+
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
             let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
             let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
@@ -195,7 +382,7 @@ fn main() {
                 .get(&current_rv) {
                 if let Some(variables) = &current_profile.variables {
                     let list: String = variables.join(" ");
-                    println!("\x1b[1;32m{}\x1b[0m", list);
+                    println!("{}", rv_config.added.paint(&list));
                 }
             }
         },
@@ -284,6 +471,8 @@ fn main() {
             }
         },
         Commands::Clear => {
+            let rv_config = Config::load();
+
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
             let metadata_str = std::fs::read_to_string(&metadata_file).unwrap();
             let mut metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
@@ -301,13 +490,18 @@ fn main() {
                     unset_changed = true;
                     for var in current_vars {
                         cmd.push_str(format!("unset {}\n", var).as_str());
-                        unset.push_str(format!(" \x1b[1;31m-{}\x1b[0m", var).as_str());
+                        unset.push_str(&rv_config.removed.paint(&var));
                     }
                 }
                 metadata.activated.remove(&current_rv);
             }
             if unset_changed {
-                println!("\x1b[1;31mrv ↓\x1b[0m {} {}", current_pwd, unset);
+                println!(
+                    "{}{}{}",
+                    rv_config.deactivated.paint(""),
+                    rv_config.deactivated_dir.paint(&current_pwd),
+                    unset,
+                );
             }
             std::fs::write(&metadata_file, serde_json::to_string(&metadata).unwrap()).unwrap();
         },
@@ -340,11 +534,12 @@ fn parse_config(
     export_changed: &mut bool,
     cmd: &mut String,
     export: &mut String,
+    config: &Config,
 ) {
     match outer {
         Value::Table(inner) => {
             for (key, value) in inner {
-                parse_config(Some(key), value, current_pwd, export_changed, cmd, export);
+                parse_config(Some(key), value, current_pwd, export_changed, cmd, export, config);
             }
         },
         outer => {
@@ -355,12 +550,12 @@ fn parse_config(
                 if val != value {
                     *export_changed = true;
                     cmd.push_str(format!("export {}={}\n", key, value).as_str());
-                    export.push_str(format!(" \x1b[1m\x1b[38;5;208m~{}\x1b[0m", key).as_str());
+                    export.push_str(&config.changed.paint(key));
                 }
             } else {
                 *export_changed = true;
                 cmd.push_str(format!("export {}={}\n", key, value).as_str());
-                export.push_str(format!(" \x1b[1;32m+{}\x1b[0m", key).as_str());
+                export.push_str(&config.added.paint(key));
             }
         },
     }
