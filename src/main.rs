@@ -105,12 +105,29 @@ fn main() {
                     let current_profile = current_pwd.profile.clone();
                 
                     let file = std::fs::read_to_string(current_rv.to_str().unwrap()).unwrap();
+                    current_pwd.variables = Some(Vec::new());
+
                     let mut config: Value = toml::from_str(&file).unwrap();
+                    for (key, value) in config.as_table().unwrap() {
+                        if let Value::String(value) = value {
+                            current_pwd.variables.as_mut().unwrap().push(key.clone());
+                            if let Ok(val) = env::var(key) {
+                                if val != *value {
+                                    export_changed = true;
+                                    cmd.push_str(format!("export {}={}\n", key, value).as_str());
+                                    export.push_str(format!(" \x1b[1m\x1b[38;5;208m~{}\x1b[0m", key).as_str());
+                                }
+                            } else {
+                                export_changed = true;
+                                cmd.push_str(format!("export {}={}\n", key, value).as_str());
+                                export.push_str(format!(" \x1b[1;32m+{}\x1b[0m", key).as_str());
+                            }
+                        }
+                    }
                     for value in current_profile.split('.') {
                         config = config.get(value).unwrap().clone();
                     }
 
-                    current_pwd.variables = Some(Vec::new());
                     parse_config(None, &mut config, current_pwd, &mut export_changed, &mut cmd, &mut export);
                 }
                 std::fs::write(&metadata_file, serde_json::to_string(&metadata).unwrap()).unwrap();
