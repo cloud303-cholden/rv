@@ -17,10 +17,15 @@ enum Commands {
     Chpwd,
     #[clap(hide = true)]
     Precmd,
+    /// Activates a profile
     Set(Set),
+    /// Shows the variables of the current profile
     Show,
+    /// Outputs the variables and values of the current profile (default format is JSON)
     List(List),
+    /// Outputs the value of a variable in the current profile
     Get(Get),
+    /// Deactivates the current profile
     Clear,
 }
 

@@ -2,6 +2,7 @@
 name = "rv"
 version = "0.1.0"
 edition = "2021"
+description = "Tool for flexibly managing environment variable profiles"
 
 [dependencies]
 anyhow = "1.0"
