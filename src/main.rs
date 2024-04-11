@@ -20,11 +20,17 @@ enum Commands {
     Set(Set),
     Show,
     List,
+    Get(Get),
 }
 
 #[derive(Args, Debug)]
 struct Set {
-    profile:  String,
+    profile: String,
+}
+
+#[derive(Args, Debug)]
+struct Get {
+    key: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -205,6 +211,38 @@ fn main() {
 
                     let list = serde_json::to_string_pretty(&result).unwrap();
                     println!("{}", list);
+                }
+            }
+        },
+        Commands::Get(args) => {
+            let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
+            let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
+            let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
+            let current_pwd = env::var("PWD").unwrap();
+            let current_rv = PathBuf::from(&current_pwd).join("rv.toml");
+            let mut result: HashMap<String, String> = HashMap::new();
+            if current_rv.exists() {
+                if let Some(current_pwd) = metadata
+                    .activated
+                    .get(&current_rv) {
+
+                    let current_profile = current_pwd.profile.clone();
+                
+                    let file = std::fs::read_to_string(current_rv.to_str().unwrap()).unwrap();
+
+                    let mut config: Value = toml::from_str(&file).unwrap();
+                    for (key, value) in config.as_table().unwrap() {
+                        if let Value::String(value) = value {
+                            result.insert(key.clone(), value.clone());
+                        }
+                    }
+                    for value in current_profile.split('.') {
+                        config = config.get(value).unwrap().clone();
+                    }
+
+                    parse_to_map(None, &mut config, &mut result);
+
+                    println!("{}", result.get(&args.key).unwrap_or(&String::from("null")));
                 }
             }
         },
