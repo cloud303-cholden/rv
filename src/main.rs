@@ -18,6 +18,7 @@ enum Commands {
     #[clap(hide = true)]
     Precmd,
     Set(Set),
+    Show,
     List,
 }
 
@@ -159,7 +160,7 @@ fn main() {
             println!("unset RV_CHECK");
             println!("{}", cmd);
         },
-        Commands::List => {
+        Commands::Show => {
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
             let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
             let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
@@ -173,7 +174,59 @@ fn main() {
                     println!("\x1b[1;32m{}\x1b[0m", list);
                 }
             }
-        }
+        },
+        Commands::List => {
+            let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
+            let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
+            let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
+            let current_pwd = env::var("PWD").unwrap();
+            let current_rv = PathBuf::from(&current_pwd).join("rv.toml");
+            let mut result: HashMap<String, String> = HashMap::new();
+            if current_rv.exists() {
+                if let Some(current_pwd) = metadata
+                    .activated
+                    .get(&current_rv) {
+
+                    let current_profile = current_pwd.profile.clone();
+                
+                    let file = std::fs::read_to_string(current_rv.to_str().unwrap()).unwrap();
+
+                    let mut config: Value = toml::from_str(&file).unwrap();
+                    for (key, value) in config.as_table().unwrap() {
+                        if let Value::String(value) = value {
+                            result.insert(key.clone(), value.clone());
+                        }
+                    }
+                    for value in current_profile.split('.') {
+                        config = config.get(value).unwrap().clone();
+                    }
+
+                    parse_to_map(None, &mut config, &mut result);
+
+                    let list = serde_json::to_string_pretty(&result).unwrap();
+                    println!("{}", list);
+                }
+            }
+        },
+    }
+}
+
+fn parse_to_map(
+    key: Option<&String>,
+    value: &mut Value,
+    map: &mut HashMap<String, String>,
+) {
+    match value {
+        Value::Table(table) => {
+            for (key, value) in table {
+                parse_to_map(Some(key), value, map);
+            }
+        },
+        value => {
+            let value = value.as_str().unwrap();
+            let key = key.unwrap();
+            map.insert(key.clone(), value.to_string());
+        },
     }
 }
 
