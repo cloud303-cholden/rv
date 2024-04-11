@@ -18,6 +18,7 @@ enum Commands {
     #[clap(hide = true)]
     Precmd,
     Set(Set),
+    List,
 }
 
 #[derive(Args, Debug)]
@@ -157,6 +158,21 @@ fn main() {
 
             println!("unset RV_CHECK");
             println!("{}", cmd);
+        },
+        Commands::List => {
+            let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
+            let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
+            let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
+            let current_pwd = env::var("PWD").unwrap();
+            let current_rv = PathBuf::from(&current_pwd).join("rv.toml");
+            if let Some(current_profile) = metadata
+                .activated
+                .get(&current_rv) {
+                if let Some(variables) = &current_profile.variables {
+                    let list: String = variables.join(" ");
+                    println!("\x1b[1;32m{}\x1b[0m", list);
+                }
+            }
         }
     }
 }
