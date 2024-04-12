@@ -382,7 +382,12 @@ fn main() {
                 .get(&current_rv) {
                 if let Some(variables) = &current_profile.variables {
                     let list: String = variables.join(" ");
-                    println!("{}", rv_config.added.paint(&list));
+                    println!(
+                        "{}{} {}",
+                        rv_config.activated.paint(""),
+                        rv_config.activated_dir.paint(&current_profile.profile),
+                        Style::new().bold().fg(Color::Green).paint(&list),
+                    );
                 }
             }
         },
