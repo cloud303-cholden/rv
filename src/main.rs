@@ -263,7 +263,7 @@ fn main() {
             let config = Config::load();
 
             let previous_dir = env::var("OLDPWD").unwrap();
-            let current_dir = env::var("PWD").unwrap();
+            let current_dir = env::current_dir().unwrap();
             let check = env::var("RV_CHECK").ok();
 
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
@@ -334,7 +334,7 @@ fn main() {
             let home_dir = dirs::home_dir().unwrap();
             let home_dir = home_dir.to_str().unwrap();
             let previous_dir = previous_dir.replace(home_dir, "~");
-            let current_dir = current_dir.replace(home_dir, "~");
+            let current_dir = current_dir.to_str().unwrap().replace(home_dir, "~");
             let mut unset_len = previous_dir.len();
             let mut export_len = current_dir.len();
             if unset_len > export_len {
@@ -374,7 +374,7 @@ fn main() {
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
             let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
             let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
-            let current_dir = env::var("PWD").unwrap();
+            let current_dir = env::current_dir().unwrap();
             let rv_path = PathBuf::from(&current_dir).join("rv.toml");
             if let Some(current_profile) = metadata
                 .profiles
@@ -394,7 +394,7 @@ fn main() {
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
             let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
             let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
-            let current_dir = env::var("PWD").unwrap();
+            let current_dir = env::current_dir().unwrap();
             let rv_path = PathBuf::from(&current_dir).join("rv.toml");
             let mut result: HashMap<String, String> = HashMap::new();
             if rv_path.exists() {
@@ -446,7 +446,7 @@ fn main() {
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
             let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
             let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
-            let current_dir = env::var("PWD").unwrap();
+            let current_dir = env::current_dir().unwrap();
             let rv_path = PathBuf::from(&current_dir).join("rv.toml");
             let mut result: HashMap<String, String> = HashMap::new();
             if rv_path.exists() {
@@ -480,7 +480,7 @@ fn main() {
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
             let metadata_str = std::fs::read_to_string(&metadata_file).unwrap();
             let mut metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
-            let current_dir = env::var("PWD").unwrap();
+            let current_dir = env::current_dir().unwrap();
             let rv_path = PathBuf::from(&current_dir).join("rv.toml");
             let mut cmd = String::new();
 
@@ -503,7 +503,7 @@ fn main() {
                 println!(
                     "{}{}{}",
                     config.deactivated.paint(""),
-                    config.deactivated_dir.paint(&current_dir),
+                    config.deactivated_dir.paint(current_dir.to_str().unwrap()),
                     unset,
                 );
             }
