@@ -275,6 +275,7 @@ fn main() {
             let rv_path = PathBuf::from(&previous_dir).join("rv.toml");
             let mut unset = String::new();
             let mut unset_changed = false;
+            let mut previous_profile_name = String::new();
 
             if check.is_some() {
                 // Directory changed
@@ -282,6 +283,7 @@ fn main() {
                     .profiles
                     .get(&rv_path) {
 
+                    previous_profile_name = previous_profile.name.clone();
                     if let Some(previous_vars) = previous_profile.variables.clone() {
                         unset_changed = true;
                         for var in previous_vars {
@@ -295,12 +297,13 @@ fn main() {
             let rv_path = PathBuf::from(&current_dir).join("rv.toml");
             let mut export = String::new();
             let mut export_changed = false;
+            let mut current_profile_name = String::new();
             if rv_path.exists() {
                 if let Some(current_profile) = metadata
                     .profiles
                     .get_mut(&rv_path) {
 
-                    let profile_name = current_profile.name.clone();
+                    current_profile_name = current_profile.name.clone();
                 
                     let rv_file = std::fs::read_to_string(rv_path.to_str().unwrap()).unwrap();
                     current_profile.variables = Some(Vec::new());
@@ -322,7 +325,7 @@ fn main() {
                             }
                         }
                     }
-                    for value in profile_name.split('.') {
+                    for value in current_profile_name.split('.') {
                         rv = rv.get(value).unwrap().clone();
                     }
 
@@ -333,8 +336,15 @@ fn main() {
 
             let home_dir = dirs::home_dir().unwrap();
             let home_dir = home_dir.to_str().unwrap();
-            let previous_dir = previous_dir.replace(home_dir, "~");
-            let current_dir = current_dir.to_str().unwrap().replace(home_dir, "~");
+
+            let mut previous_dir = previous_dir.replace(home_dir, "~");
+            previous_dir.push(':');
+            previous_dir.push_str(previous_profile_name.as_str());
+
+            let mut current_dir = current_dir.to_str().unwrap().replace(home_dir, "~");
+            current_dir.push(':');
+            current_dir.push_str(current_profile_name.as_str());
+
             let mut unset_len = previous_dir.len();
             let mut export_len = current_dir.len();
             if unset_len > export_len {
