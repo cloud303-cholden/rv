@@ -55,12 +55,12 @@ struct Get {
 #[derive(Debug, Deserialize, Serialize)]
 struct Metadata {
     #[serde(flatten)]
-    activated: HashMap<PathBuf, Activated>,
+    profiles: HashMap<PathBuf, Profile>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct Activated {
-    profile: String,
+struct Profile {
+    name: String,
     variables: Option<Vec<String>>,
 }
 
@@ -243,16 +243,15 @@ fn main() {
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
             let metadata_str = std::fs::read_to_string(&metadata_file).unwrap();
             let mut metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
-            let profile = &args.profile;
-            let current_pwd = env::current_dir().unwrap().join("rv.toml");
+            let current_dir = env::current_dir().unwrap().join("rv.toml");
             metadata
-                .activated
-                .entry(current_pwd)
-                .and_modify(|pwd| {
-                    pwd.profile = profile.to_string();
+                .profiles
+                .entry(current_dir)
+                .and_modify(|profile| {
+                    profile.name = args.profile.to_string();
                 })
-                .or_insert(Activated {
-                    profile: profile.to_string(),
+                .or_insert(Profile {
+                    name: args.profile.to_string(),
                     variables: None,
                 });
             std::fs::write(&metadata_file, serde_json::to_string(&metadata).unwrap()).unwrap();
@@ -261,10 +260,10 @@ fn main() {
             println!("export RV_CHECK=1");
         },
         Commands::Precmd => {
-            let rv_config = Config::load();
+            let config = Config::load();
 
-            let previous_pwd = env::var("OLDPWD").unwrap();
-            let current_pwd = env::var("PWD").unwrap();
+            let previous_dir = env::var("OLDPWD").unwrap();
+            let current_dir = env::var("PWD").unwrap();
             let check = env::var("RV_CHECK").ok();
 
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
@@ -273,71 +272,71 @@ fn main() {
 
             let mut cmd = String::new();
 
-            let previous_rv = PathBuf::from(&previous_pwd).join("rv.toml");
+            let rv_path = PathBuf::from(&previous_dir).join("rv.toml");
             let mut unset = String::new();
             let mut unset_changed = false;
 
             if check.is_some() {
                 // Directory changed
-                if let Some(previous_pwd) = metadata
-                    .activated
-                    .get(&previous_rv) {
+                if let Some(previous_profile) = metadata
+                    .profiles
+                    .get(&rv_path) {
 
-                    if let Some(previous_vars) = previous_pwd.variables.clone() {
+                    if let Some(previous_vars) = previous_profile.variables.clone() {
                         unset_changed = true;
                         for var in previous_vars {
                             cmd.push_str(format!("unset {}\n", var).as_str());
-                            unset.push_str(&rv_config.removed.paint(&var));
+                            unset.push_str(&config.removed.paint(&var));
                         }
                     }
                 }
             }
 
-            let current_rv = PathBuf::from(&current_pwd).join("rv.toml");
+            let rv_path = PathBuf::from(&current_dir).join("rv.toml");
             let mut export = String::new();
             let mut export_changed = false;
-            if current_rv.exists() {
-                if let Some(current_pwd) = metadata
-                    .activated
-                    .get_mut(&current_rv) {
+            if rv_path.exists() {
+                if let Some(current_profile) = metadata
+                    .profiles
+                    .get_mut(&rv_path) {
 
-                    let current_profile = current_pwd.profile.clone();
+                    let profile_name = current_profile.name.clone();
                 
-                    let file = std::fs::read_to_string(current_rv.to_str().unwrap()).unwrap();
-                    current_pwd.variables = Some(Vec::new());
+                    let rv_file = std::fs::read_to_string(rv_path.to_str().unwrap()).unwrap();
+                    current_profile.variables = Some(Vec::new());
 
-                    let mut config: Value = toml::from_str(&file).unwrap();
-                    for (key, value) in config.as_table().unwrap() {
+                    let mut rv: Value = toml::from_str(&rv_file).unwrap();
+                    for (key, value) in rv.as_table().unwrap() {
                         if let Value::String(value) = value {
-                            current_pwd.variables.as_mut().unwrap().push(key.clone());
+                            current_profile.variables.as_mut().unwrap().push(key.clone());
                             if let Ok(val) = env::var(key) {
                                 if val != *value {
                                     export_changed = true;
                                     cmd.push_str(format!("export {}={}\n", key, value).as_str());
-                                    export.push_str(&rv_config.changed.paint(key));
+                                    export.push_str(&config.changed.paint(key));
                                 }
                             } else {
                                 export_changed = true;
                                 cmd.push_str(format!("export {}={}\n", key, value).as_str());
-                                export.push_str(&rv_config.added.paint(key));
+                                export.push_str(&config.added.paint(key));
                             }
                         }
                     }
-                    for value in current_profile.split('.') {
-                        config = config.get(value).unwrap().clone();
+                    for value in profile_name.split('.') {
+                        rv = rv.get(value).unwrap().clone();
                     }
 
-                    parse_config(None, &mut config, current_pwd, &mut export_changed, &mut cmd, &mut export, &rv_config);
+                    parse_rv(None, &mut rv, current_profile, &mut export_changed, &mut cmd, &mut export, &config);
                 }
                 std::fs::write(&metadata_file, serde_json::to_string(&metadata).unwrap()).unwrap();
             }
 
             let home_dir = dirs::home_dir().unwrap();
             let home_dir = home_dir.to_str().unwrap();
-            let previous_pwd = previous_pwd.replace(home_dir, "~");
-            let current_pwd = current_pwd.replace(home_dir, "~");
-            let mut unset_len = previous_pwd.len();
-            let mut export_len = current_pwd.len();
+            let previous_dir = previous_dir.replace(home_dir, "~");
+            let current_dir = current_dir.replace(home_dir, "~");
+            let mut unset_len = previous_dir.len();
+            let mut export_len = current_dir.len();
             if unset_len > export_len {
                 export_len = unset_len - export_len;
                 unset_len = 0;
@@ -349,8 +348,8 @@ fn main() {
             if unset_changed {
                 println!(
                     "echo '{}{}{:>unset_len$}{}'",
-                    rv_config.deactivated.paint(""),
-                    rv_config.deactivated_dir.paint(&previous_pwd),
+                    config.deactivated.paint(""),
+                    config.deactivated_dir.paint(&previous_dir),
                     "",
                     unset,
                 );
@@ -359,8 +358,8 @@ fn main() {
             if export_changed {
                 println!(
                     "echo '{}{}{:>export_len$}{}'",
-                    rv_config.activated.paint(""),
-                    rv_config.activated_dir.paint(&current_pwd),
+                    config.activated.paint(""),
+                    config.activated_dir.paint(&current_dir),
                     "",
                     export,
                 );
@@ -370,22 +369,22 @@ fn main() {
             println!("{}", cmd);
         },
         Commands::Show => {
-            let rv_config = Config::load();
+            let config = Config::load();
 
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
             let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
             let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
-            let current_pwd = env::var("PWD").unwrap();
-            let current_rv = PathBuf::from(&current_pwd).join("rv.toml");
+            let current_dir = env::var("PWD").unwrap();
+            let rv_path = PathBuf::from(&current_dir).join("rv.toml");
             if let Some(current_profile) = metadata
-                .activated
-                .get(&current_rv) {
+                .profiles
+                .get(&rv_path) {
                 if let Some(variables) = &current_profile.variables {
                     let list: String = variables.join(" ");
                     println!(
                         "{}{} {}",
-                        rv_config.activated.paint(""),
-                        rv_config.activated_dir.paint(&current_profile.profile),
+                        config.activated.paint(""),
+                        config.activated_dir.paint(&current_profile.name),
                         Style::new().bold().fg(Color::Green).paint(&list),
                     );
                 }
@@ -395,29 +394,29 @@ fn main() {
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
             let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
             let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
-            let current_pwd = env::var("PWD").unwrap();
-            let current_rv = PathBuf::from(&current_pwd).join("rv.toml");
+            let current_dir = env::var("PWD").unwrap();
+            let rv_path = PathBuf::from(&current_dir).join("rv.toml");
             let mut result: HashMap<String, String> = HashMap::new();
-            if current_rv.exists() {
+            if rv_path.exists() {
                 if let Some(current_pwd) = metadata
-                    .activated
-                    .get(&current_rv) {
+                    .profiles
+                    .get(&rv_path) {
 
-                    let current_profile = current_pwd.profile.clone();
+                    let current_profile = current_pwd.name.clone();
                 
-                    let file = std::fs::read_to_string(current_rv.to_str().unwrap()).unwrap();
+                    let rv_file = std::fs::read_to_string(rv_path.to_str().unwrap()).unwrap();
 
-                    let mut config: Value = toml::from_str(&file).unwrap();
-                    for (key, value) in config.as_table().unwrap() {
+                    let mut rv: Value = toml::from_str(&rv_file).unwrap();
+                    for (key, value) in rv.as_table().unwrap() {
                         if let Value::String(value) = value {
                             result.insert(key.clone(), value.clone());
                         }
                     }
                     for value in current_profile.split('.') {
-                        config = config.get(value).unwrap().clone();
+                        rv = rv.get(value).unwrap().clone();
                     }
 
-                    parse_to_map(None, &mut config, &mut result);
+                    rv_to_map(None, &mut rv, &mut result);
 
                     let list: String;
                     if args.json {
@@ -447,64 +446,64 @@ fn main() {
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
             let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
             let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
-            let current_pwd = env::var("PWD").unwrap();
-            let current_rv = PathBuf::from(&current_pwd).join("rv.toml");
+            let current_dir = env::var("PWD").unwrap();
+            let rv_path = PathBuf::from(&current_dir).join("rv.toml");
             let mut result: HashMap<String, String> = HashMap::new();
-            if current_rv.exists() {
+            if rv_path.exists() {
                 if let Some(current_pwd) = metadata
-                    .activated
-                    .get(&current_rv) {
+                    .profiles
+                    .get(&rv_path) {
 
-                    let current_profile = current_pwd.profile.clone();
+                    let current_profile = current_pwd.name.clone();
                 
-                    let file = std::fs::read_to_string(current_rv.to_str().unwrap()).unwrap();
+                    let rv_file = std::fs::read_to_string(rv_path.to_str().unwrap()).unwrap();
 
-                    let mut config: Value = toml::from_str(&file).unwrap();
-                    for (key, value) in config.as_table().unwrap() {
+                    let mut rv: Value = toml::from_str(&rv_file).unwrap();
+                    for (key, value) in rv.as_table().unwrap() {
                         if let Value::String(value) = value {
                             result.insert(key.clone(), value.clone());
                         }
                     }
                     for value in current_profile.split('.') {
-                        config = config.get(value).unwrap().clone();
+                        rv = rv.get(value).unwrap().clone();
                     }
 
-                    parse_to_map(None, &mut config, &mut result);
+                    rv_to_map(None, &mut rv, &mut result);
 
                     println!("{}", result.get(&args.key).unwrap_or(&String::from("null")));
                 }
             }
         },
         Commands::Clear => {
-            let rv_config = Config::load();
+            let config = Config::load();
 
             let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
             let metadata_str = std::fs::read_to_string(&metadata_file).unwrap();
             let mut metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
-            let current_pwd = env::var("PWD").unwrap();
-            let current_rv = PathBuf::from(&current_pwd).join("rv.toml");
+            let current_dir = env::var("PWD").unwrap();
+            let rv_path = PathBuf::from(&current_dir).join("rv.toml");
             let mut cmd = String::new();
 
             let mut unset = String::new();
             let mut unset_changed = false;
-            if let Some(current_pwd) = metadata
-                .activated
-                .get(&current_rv) {
+            if let Some(current_profile) = metadata
+                .profiles
+                .get(&rv_path) {
 
-                if let Some(current_vars) = current_pwd.variables.clone() {
+                if let Some(current_vars) = current_profile.variables.clone() {
                     unset_changed = true;
                     for var in current_vars {
                         cmd.push_str(format!("unset {}\n", var).as_str());
-                        unset.push_str(&rv_config.removed.paint(&var));
+                        unset.push_str(&config.removed.paint(&var));
                     }
                 }
-                metadata.activated.remove(&current_rv);
+                metadata.profiles.remove(&rv_path);
             }
             if unset_changed {
                 println!(
                     "{}{}{}",
-                    rv_config.deactivated.paint(""),
-                    rv_config.deactivated_dir.paint(&current_pwd),
+                    config.deactivated.paint(""),
+                    config.deactivated_dir.paint(&current_dir),
                     unset,
                 );
             }
@@ -513,7 +512,7 @@ fn main() {
     }
 }
 
-fn parse_to_map(
+fn rv_to_map(
     key: Option<&String>,
     value: &mut Value,
     map: &mut HashMap<String, String>,
@@ -521,7 +520,7 @@ fn parse_to_map(
     match value {
         Value::Table(table) => {
             for (key, value) in table {
-                parse_to_map(Some(key), value, map);
+                rv_to_map(Some(key), value, map);
             }
         },
         value => {
@@ -532,10 +531,10 @@ fn parse_to_map(
     }
 }
 
-fn parse_config(
+fn parse_rv(
     key: Option<&String>,
     outer: &mut Value,
-    current_pwd: &mut Activated,
+    current_pwd: &mut Profile,
     export_changed: &mut bool,
     cmd: &mut String,
     export: &mut String,
@@ -544,7 +543,7 @@ fn parse_config(
     match outer {
         Value::Table(inner) => {
             for (key, value) in inner {
-                parse_config(Some(key), value, current_pwd, export_changed, cmd, export, config);
+                parse_rv(Some(key), value, current_pwd, export_changed, cmd, export, config);
             }
         },
         outer => {
