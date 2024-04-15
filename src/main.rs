@@ -58,6 +58,19 @@ struct Metadata {
     profiles: HashMap<PathBuf, Profile>,
 }
 
+impl Metadata {
+    fn load() -> Metadata {
+        let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
+        let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
+        serde_json::from_str(&metadata_str).unwrap()
+    }
+
+    fn save(&self) {
+        let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
+        std::fs::write(metadata_file, serde_json::to_string(self).unwrap()).unwrap();
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct Profile {
     name: String,
@@ -240,9 +253,7 @@ fn main() {
 
     match &cli.command {
         Commands::Set(args) => {
-            let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
-            let metadata_str = std::fs::read_to_string(&metadata_file).unwrap();
-            let mut metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
+            let mut metadata = Metadata::load();
             let current_dir = env::current_dir().unwrap().join("rv.toml");
             metadata
                 .profiles
@@ -254,7 +265,7 @@ fn main() {
                     name: args.profile.to_string(),
                     variables: None,
                 });
-            std::fs::write(&metadata_file, serde_json::to_string(&metadata).unwrap()).unwrap();
+            metadata.save();
         },
         Commands::Chpwd => {
             println!("export RV_CHECK=1");
@@ -266,9 +277,7 @@ fn main() {
             let current_dir = env::current_dir().unwrap();
             let check = env::var("RV_CHECK").ok();
 
-            let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
-            let metadata_str = std::fs::read_to_string(&metadata_file).unwrap();
-            let mut metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
+            let mut metadata = Metadata::load();
 
             let mut cmd = String::new();
 
@@ -331,7 +340,7 @@ fn main() {
 
                     parse_rv(None, &mut rv, current_profile, &mut export_changed, &mut cmd, &mut export, &config);
                 }
-                std::fs::write(&metadata_file, serde_json::to_string(&metadata).unwrap()).unwrap();
+                metadata.save();
             }
 
             let home_dir = dirs::home_dir().unwrap();
@@ -380,10 +389,8 @@ fn main() {
         },
         Commands::Show => {
             let config = Config::load();
+            let metadata = Metadata::load();
 
-            let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
-            let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
-            let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
             let current_dir = env::current_dir().unwrap();
             let rv_path = PathBuf::from(&current_dir).join("rv.toml");
             if let Some(current_profile) = metadata
@@ -401,9 +408,8 @@ fn main() {
             }
         },
         Commands::List(args) => {
-            let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
-            let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
-            let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
+            let metadata = Metadata::load();
+
             let current_dir = env::current_dir().unwrap();
             let rv_path = PathBuf::from(&current_dir).join("rv.toml");
             let mut result: HashMap<String, String> = HashMap::new();
@@ -453,9 +459,8 @@ fn main() {
             }
         },
         Commands::Get(args) => {
-            let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
-            let metadata_str = std::fs::read_to_string(metadata_file).unwrap();
-            let metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
+            let metadata = Metadata::load();
+
             let current_dir = env::current_dir().unwrap();
             let rv_path = PathBuf::from(&current_dir).join("rv.toml");
             let mut result: HashMap<String, String> = HashMap::new();
@@ -486,10 +491,8 @@ fn main() {
         },
         Commands::Clear => {
             let config = Config::load();
+            let mut metadata = Metadata::load();
 
-            let metadata_file = dirs::data_dir().unwrap().join("rv").join("metadata.json");
-            let metadata_str = std::fs::read_to_string(&metadata_file).unwrap();
-            let mut metadata: Metadata = serde_json::from_str(&metadata_str).unwrap();
             let current_dir = env::current_dir().unwrap();
             let rv_path = PathBuf::from(&current_dir).join("rv.toml");
             let mut cmd = String::new();
@@ -517,7 +520,7 @@ fn main() {
                     unset,
                 );
             }
-            std::fs::write(&metadata_file, serde_json::to_string(&metadata).unwrap()).unwrap();
+            metadata.save();
         },
     }
 }
