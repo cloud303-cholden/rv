@@ -15,6 +15,10 @@ pub struct List {
     pub env: bool,
     #[arg(long, group = "output_format")]
     pub envrc: bool,
+    #[arg(long, group = "output_format")]
+    pub args: bool,
+    #[arg(long, group = "output_format")]
+    pub docker_args: bool,
 }
 
 impl List {
@@ -62,6 +66,18 @@ impl List {
                         .map(|(k, v)| format!("export {}={}", k, v))
                         .collect::<Vec<String>>()
                         .join("\n");
+                } else if self.args {
+                    list = result
+                        .iter()
+                        .map(|(k, v)| format!("{}={}", k, v))
+                        .collect::<Vec<String>>()
+                        .join(" ");
+                } else if self.docker_args {
+                    list = result
+                        .iter()
+                        .map(|(k, v)| format!("-e {}={}", k, v))
+                        .collect::<Vec<String>>()
+                        .join(" ");
                 } else {
                     list = serde_json::to_string_pretty(&result).unwrap();
                 }
