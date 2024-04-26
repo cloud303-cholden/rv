@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Args;
+use nu_ansi_term::{Color, Style};
 use toml::Value;
 
 use crate::{config::Config, metadata::Metadata, parse_rv};
@@ -74,7 +75,17 @@ impl Precmd {
                     }
                 }
                 for value in current_profile_name.split('.') {
-                    rv = rv.get(value).unwrap().clone();
+                    rv = match rv.get(value) {
+                        Some(value) => value.clone(),
+                        None => {
+                            let profile_str = Style::new()
+                                .bold()
+                                .fg(Color::Green)
+                                .paint(current_profile_name.clone());
+                            println!("echo 'profile {} not found'", profile_str);
+                            return
+                        }
+                    };
                 }
 
                 parse_rv(None, &mut rv, current_profile, &mut export_changed, &mut cmd, &mut export, &config);
