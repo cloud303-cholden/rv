@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use clap::Parser;
 use cli::Cli;
+use convert_case::Casing;
 use serde::{Deserialize, Serialize};
 use toml::Value;
 
@@ -26,17 +27,21 @@ fn rv_to_map(
     key: Option<&String>,
     value: &mut Value,
     map: &mut HashMap<String, String>,
+    case: &Option<cli::list::Case>,
 ) {
     match value {
         Value::Table(table) => {
             for (key, value) in table {
-                rv_to_map(Some(key), value, map);
+                rv_to_map(Some(key), value, map, case);
             }
         },
         value => {
             let value = value.as_str().unwrap();
-            let key = key.unwrap();
-            map.insert(key.clone(), value.to_string());
+            let mut key = key.unwrap().clone();
+            if case.is_some() {
+                key = key.to_case(case.clone().unwrap().into());
+            }
+            map.insert(key, value.to_string());
         },
     }
 }

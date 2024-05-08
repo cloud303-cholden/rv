@@ -13,7 +13,7 @@ use self::{
 mod chpwd;
 mod clear;
 mod get;
-mod list;
+pub mod list;
 mod precmd;
 mod set;
 mod show;

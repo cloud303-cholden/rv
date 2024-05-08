@@ -36,7 +36,7 @@ impl Get {
                     rv = rv.get(value).unwrap().clone();
                 }
 
-                rv_to_map(None, &mut rv, &mut result);
+                rv_to_map(None, &mut rv, &mut result, &None);
 
                 println!("{}", result.get(&self.key).unwrap_or(&String::from("null")));
             }
