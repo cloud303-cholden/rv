@@ -12,6 +12,10 @@ pub struct List {
     pub case: Option<Case>,
     #[arg(long, value_enum, default_value_t)]
     pub format: Format,
+    #[arg(long)]
+    pub profile: Option<String>,
+    #[arg(long)]
+    pub path: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, ValueEnum)]
@@ -83,77 +87,88 @@ impl List {
     pub fn list(&self) {
         let metadata = Metadata::load();
 
-        let current_dir = std::env::current_dir().unwrap();
-        let rv_path = PathBuf::from(&current_dir).join("rv.toml");
+        let rv_path = match self.path.as_ref() {
+            Some(inner) => inner.clone().join("rv.toml"),
+            None => {
+                let current_dir = std::env::current_dir().unwrap();
+                PathBuf::from(&current_dir).join("rv.toml")
+            },
+        };
+        if !rv_path.exists() {
+            return
+        }
+
         let mut result: HashMap<String, String> = HashMap::new();
-        if rv_path.exists() {
-            if let Some(current_pwd) = metadata
-                .profiles
-                .get(&rv_path) {
 
-                let current_profile = current_pwd.name.clone();
-            
-                let rv_file = std::fs::read_to_string(rv_path.to_str().unwrap()).unwrap();
+        let current_profile = match self.profile.as_ref() {
+            Some(inner) => inner.clone(),
+            None => metadata
+               .profiles
+               .get(&rv_path)
+               .unwrap()
+               .name
+               .clone(),
+        };
 
-                let mut rv: Value = toml::from_str(&rv_file).unwrap();
-                for (key, value) in rv.as_table().unwrap() {
-                    if let Value::String(value) = value {
-                        let mut key = key.clone();
-                        if let Some(case) = self.case.as_ref() {
-                            key = key.to_case(case.clone().into());
-                        }
-                        result.insert(key, value.clone());
-                    }
+        let rv_file = std::fs::read_to_string(rv_path.to_str().unwrap()).unwrap();
+
+        let mut rv: Value = toml::from_str(&rv_file).unwrap();
+        for (key, value) in rv.as_table().unwrap() {
+            if let Value::String(value) = value {
+                let mut key = key.clone();
+                if let Some(case) = self.case.as_ref() {
+                    key = key.to_case(case.clone().into());
                 }
-                for value in current_profile.split('.') {
-                    rv = rv.get(value).unwrap().clone();
-                }
-
-                rv_to_map(None, &mut rv, &mut result, &self.case);
-
-                let list: String = match self.format {
-                    Format::Json => serde_json::to_string_pretty(&result).unwrap(),
-                    Format::Toml => toml::to_string(&result).unwrap(),
-                    Format::Env => result
-                        .iter()
-                        .map(|(k, v)| format!("{}={}", k, v))
-                        .collect::<Vec<String>>()
-                        .join("\n"),
-                    Format::Envrc => result
-                        .iter()
-                        .map(|(k, v)| format!("export {}={}", k, v))
-                        .collect::<Vec<String>>()
-                        .join("\n"),
-                    Format::Args => result
-                        .iter()
-                        .map(|(k, v)| format!("{}={}", k, v))
-                        .collect::<Vec<String>>()
-                        .join(" "),
-                    Format::DockerArgs => result
-                        .iter()
-                        .map(|(k, v)| format!("-e {}={}", k, v))
-                        .collect::<Vec<String>>()
-                        .join(" "),
-                    Format::TfvarsArgs => result
-                        .iter()
-                        .map(|(k, v)| format!("-var {}={}", k, v))
-                        .collect::<Vec<String>>()
-                        .join(" "),
-                    Format::Tfvars => {
-                        let longest = result
-                            .keys()
-                            .max_by_key(|k| k.len())
-                            .unwrap()
-                            .len();
-                        result
-                            .iter()
-                            .map(|(k, v)| format!("{:<longest$} = {:?}", k, v))
-                            .collect::<Vec<String>>()
-                            .join("\n")
-                    },
-                };
-                println!("{}", list);
+                result.insert(key, value.clone());
             }
         }
+        for value in current_profile.split('.') {
+            rv = rv.get(value).unwrap().clone();
+        }
+
+        rv_to_map(None, &mut rv, &mut result, &self.case);
+
+        let list: String = match self.format {
+            Format::Json => serde_json::to_string_pretty(&result).unwrap(),
+            Format::Toml => toml::to_string(&result).unwrap(),
+            Format::Env => result
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect::<Vec<String>>()
+                .join("\n"),
+            Format::Envrc => result
+                .iter()
+                .map(|(k, v)| format!("export {}={}", k, v))
+                .collect::<Vec<String>>()
+                .join("\n"),
+            Format::Args => result
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect::<Vec<String>>()
+                .join(" "),
+            Format::DockerArgs => result
+                .iter()
+                .map(|(k, v)| format!("-e {}={}", k, v))
+                .collect::<Vec<String>>()
+                .join(" "),
+            Format::TfvarsArgs => result
+                .iter()
+                .map(|(k, v)| format!("-var {}={}", k, v))
+                .collect::<Vec<String>>()
+                .join(" "),
+            Format::Tfvars => {
+                let longest = result
+                    .keys()
+                    .max_by_key(|k| k.len())
+                    .unwrap()
+                    .len();
+                result
+                    .iter()
+                    .map(|(k, v)| format!("{:<longest$} = {:?}", k, v))
+                    .collect::<Vec<String>>()
+                    .join("\n")
+            },
+        };
+        println!("{}", list);
     }
 }
